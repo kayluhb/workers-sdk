@@ -472,6 +472,67 @@ const testCases: TestCase[] = [
 		],
 	},
 	{
+		name: "VPC Network (tunnel_id)",
+		scriptPath: "vpc-network.js",
+		setup: async (helper) => {
+			// Create a real Cloudflare tunnel for testing
+			const tunnelId = await helper.tunnel();
+
+			return {
+				remoteProxySessionConfig: {
+					bindings: {
+						VPC_NETWORK: {
+							type: "vpc_network",
+							tunnel_id: tunnelId,
+						},
+					},
+				},
+				miniflareConfig: (connection) =>
+					({
+						vpcNetworks: {
+							VPC_NETWORK: {
+								tunnel_id: tunnelId,
+								remoteProxyConnectionString: connection,
+							},
+						},
+					}) as unknown as Partial<WorkerOptions>,
+			};
+		},
+		expectFetchToMatch: [
+			// Since we're using a real tunnel but no actual network connectivity, Iris will report back an error
+			// but this is considered an effective test for wrangler and vpc network bindings
+			expect.stringMatching(/CONNECT failed: 503 Service Unavailable/),
+		],
+	},
+	{
+		name: "VPC Network (network_id: cf1:network)",
+		scriptPath: "vpc-network.js",
+		setup: () => ({
+			remoteProxySessionConfig: {
+				bindings: {
+					VPC_NETWORK: {
+						type: "vpc_network",
+						network_id: "cf1:network",
+					},
+				} as unknown as StartDevWorkerInput["bindings"],
+			},
+			miniflareConfig: (connection) =>
+				({
+					vpcNetworks: {
+						VPC_NETWORK: {
+							network_id: "cf1:network",
+							remoteProxyConnectionString: connection,
+						},
+					},
+				}) as unknown as Partial<WorkerOptions>,
+		}),
+		expectFetchToMatch: [
+			// cf1:network routes through the Cloudflare One mesh network; with no actual service
+			// listening at the target, Iris will report back a connection error
+			expect.stringMatching(/CONNECT failed: 50[0-9] /),
+		],
+	},
+	{
 		name: "VPC Service",
 		scriptPath: "vpc-service.js",
 		// TODO: Enable post VPC announcement
